@@ -56,6 +56,21 @@ nav button{flex:1;border:0;background:none;color:var(--muted);padding:10px 0;bor
 nav button.on{color:var(--text);background:rgba(255,255,255,.16);box-shadow:inset 0 1px 0 var(--hi)}
 .view{display:none;animation:in .3s ease}.view.on{display:block}
 @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ring{position:relative;width:min(70vw,260px);aspect-ratio:1;margin:4px auto 16px}
+.ring svg{width:100%;height:100%;overflow:visible}
+.trk{fill:none;stroke:rgba(255,255,255,.1);stroke-width:14}
+.arc{fill:none;stroke:var(--ok);stroke-width:14;transition:stroke-dasharray .4s;filter:drop-shadow(0 0 8px var(--ok))}
+#ptr line{stroke:var(--text);stroke-width:3;stroke-linecap:round}#ptr circle{fill:var(--text);filter:drop-shadow(0 0 6px var(--text))}
+.mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.mid b{font-size:40px;letter-spacing:-.03em}.mid span{color:var(--muted);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chip{flex:1;min-width:52px;padding:10px 0;text-align:center;border-radius:14px;font-weight:600;font-size:14px;cursor:pointer;background:rgba(255,255,255,.07);border:1px solid var(--edge);transition:.15s}
+.chip.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-color:transparent}
+.res{text-align:center;padding:16px;border-radius:20px;margin-top:12px;font-size:22px;font-weight:700;animation:in .3s}
+.res.win{background:rgba(110,231,183,.14);color:var(--ok)}.res.lose{background:rgba(255,138,155,.12);color:var(--err)}
+.res small{display:block;font-size:13px;font-weight:500;opacity:.8}
+.res.gold{background:rgba(255,207,92,.15);color:#ffcf5c;font-size:17px}.res.gold .btn{margin-top:10px}
+.btn:disabled{opacity:.5}
 </style>
 </head>
 <body>
@@ -92,12 +107,40 @@ nav button.on{color:var(--text);background:rgba(255,255,255,.16);box-shadow:inse
     <h2>Задания</h2><div id="tlist"></div>
     <h2>Магазин</h2><div id="slist"></div>
   </section>
+
+  <section id="up" class="view">
+    <h1>Апгрейд</h1>
+    <div class="glass card">
+      <div class="ring">
+        <svg viewBox="0 0 220 220">
+          <circle class="trk" cx="110" cy="110" r="94"/>
+          <circle id="arc" class="arc" cx="110" cy="110" r="94" transform="rotate(-90 110 110)" stroke-dasharray="0 600"/>
+          <g id="ptr" style="transform-origin:110px 110px"><line x1="110" y1="2" x2="110" y2="24"/><circle cx="110" cy="2" r="5"/></g>
+        </svg>
+        <div class="mid"><b id="uch">–</b><span id="umul">шанс</span></div>
+      </div>
+      <div class="row">
+        <div class="stat"><span>Ставка</span><b id="ubet">0</b></div>
+        <div class="stat"><span>Выигрыш</span><b id="upay">0</b></div>
+      </div>
+      <div id="ures"></div>
+    </div>
+    <div class="glass card">
+      <input id="ubin" type="number" inputmode="numeric" placeholder="Сумма ставки">
+      <div class="chips" id="qchips"></div>
+      <div class="chips" id="mchips"></div>
+      <div id="umsg" class="msg"></div>
+      <button class="btn" id="spin">Апгрейд</button>
+      <div id="uprize" class="msg" style="margin-top:10px;color:var(--muted)"></div>
+    </div>
+  </section>
 </main>
 
 <nav class="glass">
   <button class="on" data-v="home">Главная</button>
   <button data-v="builds">Сборки</button>
   <button data-v="bonus">Бонусы</button>
+  <button data-v="up">Апгрейд</button>
 </nav>
 
 <script>
@@ -141,6 +184,7 @@ async function init() {
     const name = tg.initDataUnsafe?.user?.first_name || "";
     $("hi").textContent = name ? `Привет, ${name}` : "Привет";
     $("coins").textContent = ME.coins; $("friends").textContent = ME.friends; $("dl").textContent = ME.downloaded;
+    loadUp().catch(() => {});
     if (!ME.registered) $("pmsg").innerHTML = `<span class="err">Сначала нажми /start в боте</span>`;
 
     const [b, t, s] = await Promise.all([api("/api/builds"), api("/api/tasks"), api("/api/shop")]);
@@ -161,6 +205,60 @@ async function init() {
     document.querySelector("main").insertAdjacentHTML("afterbegin", `<div class="msg err">Не удалось загрузить данные. Попробуй позже.</div>`);
   }
 }
+
+// ---- Апгрейдер ----
+let UP = null, um = 2, spinning = false;
+const RC = 2 * Math.PI * 94;
+const umsg = t => $("umsg").innerHTML = t ? `<span class="err">${esc(t)}</span>` : "";
+function upCalc() {
+  const m = UP.mults.find(x => x.m === um), bet = Math.max(0, Math.floor(+$("ubin").value || 0));
+  $("uch").textContent = m.chance + "%"; $("umul").textContent = "x" + um;
+  $("ubet").textContent = bet; $("upay").textContent = Math.floor(bet * um);
+  $("arc").style.strokeDasharray = `${m.chance / 100 * RC} ${RC}`;
+  document.querySelectorAll("#mchips .chip").forEach(c => c.classList.toggle("on", +c.dataset.m === um));
+}
+async function loadUp() {
+  UP = await api("/api/upgrade/config");
+  $("mchips").innerHTML = UP.mults.map(x => `<div class="chip" data-m="${x.m}">x${x.m}</div>`).join("");
+  $("qchips").innerHTML = ["10", "50", "100", "½", "×2", "MAX"].map(x => `<div class="chip" data-q="${x}">${x}</div>`).join("");
+  $("mchips").onclick = e => { const c = e.target.closest(".chip"); if (c && !spinning) { um = +c.dataset.m; hap(); upCalc(); } };
+  $("qchips").onclick = e => {
+    const c = e.target.closest(".chip"); if (!c || spinning) return; hap();
+    const q = c.dataset.q, v = Math.floor(+$("ubin").value || 0);
+    $("ubin").value = q === "½" ? Math.max(UP.min, Math.floor(v / 2)) : q === "×2" ? Math.min(UP.max, v * 2)
+      : q === "MAX" ? Math.min(UP.max, UP.coins) : +q;
+    upCalc();
+  };
+  $("ubin").oninput = upCalc;
+  $("uprize").textContent = UP.prize ? `🎁 Шанс ${UP.prize.chance}% выиграть доступ «${UP.prize.name}» при выигрыше (ставка от ${UP.prize.min_bet})` : "";
+  upCalc();
+}
+$("spin").onclick = async () => {
+  if (spinning || !UP) return;
+  const bet = Math.floor(+$("ubin").value || 0);
+  if (bet < UP.min || bet > UP.max) return umsg(`Ставка: от ${UP.min} до ${UP.max}`);
+  if (bet > UP.coins) return umsg("Недостаточно монет");
+  umsg(""); spinning = true; $("spin").disabled = true; $("ures").innerHTML = "";
+  try {
+    const r = await api("/api/upgrade", {bet, mult: um});
+    if (!r.ok) { umsg(r.error); return; }
+    const p = $("ptr");
+    p.style.transition = "none"; p.style.transform = "rotate(0deg)"; p.getBoundingClientRect();
+    p.style.transition = "transform 4s cubic-bezier(.12,.6,.1,1)";
+    p.style.transform = `rotate(${360 * 5 + r.roll / 100 * 360}deg)`;
+    const t = setInterval(() => hap("light"), 250);
+    await new Promise(s => setTimeout(s, 4100)); clearInterval(t);
+    UP.coins = r.balance; $("coins").textContent = r.balance;
+    tg?.HapticFeedback?.notificationOccurred?.(r.win ? "success" : "error");
+    let html = r.win
+      ? `<div class="res win">+${r.payout - r.bet} монет<small>${r.bet} → ${r.payout} (x${r.mult})</small></div>`
+      : `<div class="res lose">−${r.bet} монет<small>Не повезло, шанс был ${r.chance}%</small></div>`;
+    if (r.prize) html += `<div class="res gold">🎁 Ты выиграл доступ!<br>«${esc(r.prize.name)}»<button class="btn" id="join">Вступить</button></div>`;
+    $("ures").innerHTML = html;
+    if (r.prize) { $("join").onclick = () => tg.openTelegramLink(r.prize.link); loadUp(); }
+  } catch { umsg("Ошибка сети"); }
+  finally { spinning = false; $("spin").disabled = false; }
+};
 
 $("redeem").onclick = async () => {
   const code = $("code").value.trim(); if (!code) return;
