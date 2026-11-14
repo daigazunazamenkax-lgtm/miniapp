@@ -247,7 +247,7 @@ async function loadUp() {
     upCalc();
   };
   $("ubin").oninput = upCalc;
-  $("uprize").textContent = UP.prize ? `🎁 Шанс ${UP.prize.chance}% выиграть доступ «${UP.prize.name}» при выигрыше (ставка от ${UP.prize.min_bet})` : "";
+  $("uprize").textContent = (UP.prize ? `🎁 Шанс ${UP.prize.chance}% выиграть доступ «${UP.prize.name}» при выигрыше (ставка от ${UP.prize.min_bet}). ` : "") + `Игр сегодня осталось: ${UP.left}`;
   const st = UP.stats;
   $("uhist").innerHTML = st.spins
     ? `<div class="row" style="margin-bottom:10px"><div class="stat"><b>${st.wins} / ${st.spins}</b><span>побед</span></div><div class="stat"><b>+${st.best}</b><span>лучший выигрыш</span></div></div>`
