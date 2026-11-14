@@ -71,6 +71,10 @@ nav button.on{color:var(--text);background:rgba(255,255,255,.16);box-shadow:inse
 .res small{display:block;font-size:13px;font-weight:500;opacity:.8}
 .res.gold{background:rgba(255,207,92,.15);color:#ffcf5c;font-size:17px}.res.gold .btn{margin-top:10px}
 .btn:disabled{opacity:.5}
+.bar{height:8px;border-radius:99px;background:rgba(255,255,255,.12);overflow:hidden;margin:4px 0 8px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .6s}
+.li{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--edge)}
+.li:last-child{border:0}.li.me{color:var(--accent);font-weight:700}
 </style>
 </head>
 <body>
@@ -94,10 +98,13 @@ nav button.on{color:var(--text);background:rgba(255,255,255,.16);box-shadow:inse
     </div>
     <h2>Друзья</h2>
     <div class="glass card">
-      <div style="color:var(--muted);margin-bottom:12px">Пригласи 5 друзей — получи партнёрскую сборку.</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div id="btxt" style="color:var(--muted);margin-bottom:12px">Пригласи 5 друзей — получи партнёрскую сборку.</div>
       <button class="btn" id="share">Пригласить</button>
       <button class="btn ghost" id="copy" style="margin-top:8px">Скопировать ссылку</button>
     </div>
+    <h2>Топ по монетам</h2>
+    <div class="glass card" id="top"></div>
   </section>
 
   <section id="builds" class="view"><h1>Сборки</h1><div id="blist"></div></section>
@@ -133,6 +140,8 @@ nav button.on{color:var(--text);background:rgba(255,255,255,.16);box-shadow:inse
       <button class="btn" id="spin">Апгрейд</button>
       <div id="uprize" class="msg" style="margin-top:10px;color:var(--muted)"></div>
     </div>
+    <h2>Твоя статистика</h2>
+    <div class="glass card" id="uhist"></div>
   </section>
 </main>
 
@@ -187,6 +196,12 @@ async function init() {
     $("hi").textContent = name ? `Привет, ${name}` : "Привет";
     $("coins").textContent = ME.coins; $("friends").textContent = ME.friends; $("dl").textContent = ME.downloaded;
     loadUp().catch(() => { $("umsg").innerHTML = `<span class="err">Бот не отвечает на /api/upgrade. Залей новый main.py на Railway.</span>`; });
+    $("bar").style.width = Math.min(100, ME.friends / 5 * 100) + "%";
+    $("btxt").textContent = ME.friends >= 5 ? "Цель выполнена: проверь награду в боте" : `Приглашено ${ME.friends} из 5: получи партнёрскую сборку`;
+    api("/api/top").then(r => {
+      $("top").innerHTML = r.top.length ? r.top.map(x => `<div class="li${x.me ? " me" : ""}"><span>${x.n}. ${x.name}${x.me ? " (ты)" : ""}</span><b>${x.coins}</b></div>`).join("")
+        + (r.rank && !r.top.some(x => x.me) ? `<div class="li me"><span>Твоё место: ${r.rank}</span></div>` : "") : empty("Пока никого");
+    }).catch(() => {});
     if (!ME.registered) $("pmsg").innerHTML = `<span class="err">Сначала нажми /start в боте</span>`;
 
     const [b, t, s] = await Promise.all([api("/api/builds"), api("/api/tasks"), api("/api/shop")]);
@@ -197,12 +212,12 @@ async function init() {
     $("blist").querySelectorAll("[data-b]").forEach(e => e.onclick = () => { hap("medium"); toBot("build_" + e.dataset.b); });
 
     $("tlist").innerHTML = t.length ? t.map(x => `
-      <div class="glass item" data-go><div class="t"><b>${esc(x.title)}</b><span>${esc(x.description)}</span></div>
+      <div class="glass item" data-go="task_${x.id}"><div class="t"><b>${esc(x.title)}</b><span>${esc(x.description)}</span></div>
       <div class="pill">+${x.reward}</div></div>`).join("") : empty("Заданий пока нет");
     $("slist").innerHTML = s.length ? s.map(x => `
-      <div class="glass item" data-go><div class="t"><b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>
+      <div class="glass item" data-go="shop_${x.id}"><div class="t"><b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>
       <div class="pill soft">${x.price} монет</div></div>`).join("") : empty("Товаров пока нет");
-    document.querySelectorAll("[data-go]").forEach(e => e.onclick = () => { hap(); toBot(); });
+    document.querySelectorAll("[data-go]").forEach(e => e.onclick = () => { hap(); toBot(e.dataset.go); });
   } catch (e) {
     document.querySelector("main").insertAdjacentHTML("afterbegin", `<div class="msg err">Не удалось загрузить данные. Попробуй позже.</div>`);
   }
@@ -233,6 +248,11 @@ async function loadUp() {
   };
   $("ubin").oninput = upCalc;
   $("uprize").textContent = UP.prize ? `🎁 Шанс ${UP.prize.chance}% выиграть доступ «${UP.prize.name}» при выигрыше (ставка от ${UP.prize.min_bet})` : "";
+  const st = UP.stats;
+  $("uhist").innerHTML = st.spins
+    ? `<div class="row" style="margin-bottom:10px"><div class="stat"><b>${st.wins} / ${st.spins}</b><span>побед</span></div><div class="stat"><b>+${st.best}</b><span>лучший выигрыш</span></div></div>`
+      + UP.history.map(x => `<div class="li"><span>x${x.mult} · ставка ${x.bet}</span><b class="${x.win ? "ok" : "err"}">${x.win ? "+" + (x.payout - x.bet) : "−" + x.bet}</b></div>`).join("")
+    : empty("Игр пока нет");
   upCalc();
 }
 $("spin").onclick = async () => {
@@ -257,7 +277,8 @@ $("spin").onclick = async () => {
       : `<div class="res lose">−${r.bet} монет<small>Не повезло, шанс был ${r.chance}%</small></div>`;
     if (r.prize) html += `<div class="res gold">🎁 Ты выиграл доступ!<br>«${esc(r.prize.name)}»<button class="btn" id="join">Вступить</button></div>`;
     $("ures").innerHTML = html;
-    if (r.prize) { $("join").onclick = () => tg.openTelegramLink(r.prize.link); loadUp(); }
+    if (r.prize) $("join").onclick = () => tg.openTelegramLink(r.prize.link);
+    loadUp();
   } catch { umsg("Ошибка сети"); }
   finally { spinning = false; $("spin").disabled = false; }
 };
