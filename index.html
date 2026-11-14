@@ -184,7 +184,7 @@ async function init() {
     const name = tg.initDataUnsafe?.user?.first_name || "";
     $("hi").textContent = name ? `Привет, ${name}` : "Привет";
     $("coins").textContent = ME.coins; $("friends").textContent = ME.friends; $("dl").textContent = ME.downloaded;
-    loadUp().catch(() => {});
+    loadUp().catch(() => { $("umsg").innerHTML = `<span class="err">Бот не отвечает на /api/upgrade. Залей новый main.py на Railway.</span>`; });
     if (!ME.registered) $("pmsg").innerHTML = `<span class="err">Сначала нажми /start в боте</span>`;
 
     const [b, t, s] = await Promise.all([api("/api/builds"), api("/api/tasks"), api("/api/shop")]);
